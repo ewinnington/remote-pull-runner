@@ -1,3 +1,5 @@
 .githubPAT
 keypair
 venv/
+logs/
+__pycache__/
