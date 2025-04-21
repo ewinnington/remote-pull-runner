@@ -165,4 +165,26 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
     await loadDropdowns(); loadCommands();
   }
+
+  // Settings Page
+  if (document.getElementById('settings-form')) {
+    const form = document.getElementById('settings-form');
+    // Load existing settings
+    (async () => {
+      const settings = await request('/api/settings', { method: 'GET', headers });
+      document.getElementById('repo_interval').value = settings.repo_interval;
+      document.getElementById('server_interval').value = settings.server_interval;
+    })();
+    // Handle form submit
+    form.addEventListener('submit', async e => {
+      e.preventDefault();
+      const repoVal = parseInt(document.getElementById('repo_interval').value, 10);
+      const srvVal = parseInt(document.getElementById('server_interval').value, 10);
+      await request('/api/settings', {
+        method: 'POST', headers,
+        body: JSON.stringify({ repo_interval: repoVal, server_interval: srvVal })
+      });
+      alert('Settings saved and schedule updated');
+    });
+  }
 });

@@ -168,3 +168,37 @@
 - Update the Repos UI to display `last_commit` in the table
 - Update README with `last_commit` behavior
 - Verify remote command execution clones with correct checkouts
+
+---
+
+## Feature Check: Auto-Deploy Commands on New Commits
+
+**Date:** 2025-04-21
+
+- Expected: When a new commit is detected in a monitored repo (via scheduled or manual check), all enrolled commands for that repo should automatically run on their target servers.
+- Current: `runner.check_repos` logs new commits but does not trigger `runner.run_command` for enrolled commands.
+
+---
+
+## New Feature: Configurable Check Intervals
+
+**Date:** 2025-04-21
+
+- Requirement: Allow users to configure the interval for repo checks (default 24h) and server connectivity checks (default 12h) via the web UI.
+- Store these interval settings in `config.json` and apply them to the APScheduler jobs.
+
+---
+
+## Auto-Deploy & Settings API (Completed)
+
+**Date:** 2025-04-21
+
+- `runner.check_repos` automatically triggers `run_command` for all active commands on new commits
+- Settings API endpoints (`GET/POST /api/settings`) added to `app.py`
+- Scheduler job intervals now configurable via `repo_interval` and `server_interval` fields in `config.json`
+
+*Next:*
+- Create Settings UI (`settings.html`) and add navigation link
+- Implement JavaScript in `main.js` to load and update settings
+- Test that interval changes reschedule background jobs
+- Add UI indicator/logging for automatic deployments

@@ -1,0 +1,17 @@
+{% extends 'layout.html' %}
+{% block content %}
+<h2>Settings</h2>
+<form id="settings-form" class="row g-3">
+  <div class="col-md-4">
+    <label for="repo_interval" class="form-label">Repo Check Interval (hours)</label>
+    <input type="number" id="repo_interval" name="repo_interval" class="form-control" min="1" required>
+  </div>
+  <div class="col-md-4">
+    <label for="server_interval" class="form-label">Server Check Interval (hours)</label>
+    <input type="number" id="server_interval" name="server_interval" class="form-control" min="1" required>
+  </div>
+  <div class="col-12">
+    <button type="submit" id="save-settings" class="btn btn-primary">Save Settings</button>
+  </div>
+</form>
+{% endblock %}

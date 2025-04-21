@@ -89,6 +89,11 @@ def view_logs():
 def view_commands():
     return render_template('commands.html')
 
+@app.route('/settings/view')
+@require_token
+def view_settings():
+    return render_template('settings.html')
+
 # Repositories CRUD
 @app.route('/api/repos', methods=['GET'])
 def get_repos():
@@ -101,7 +106,8 @@ def add_repo():
     data = request.json or {}
     name = normalize_repo(data.get('name',''))
     repo = {'name': name, 'token':data.get('token',''),
-            'branch':data.get('branch','main'), 'active':True, 'last_check':'1970-01-01T00:00:00'}
+            'branch':data.get('branch','main'), 'active':True,
+            'last_check':'1970-01-01T00:00:00', 'last_commit':''}
     cfg = load_config()
     cfg.setdefault('repos', [])
     cfg['repos'] = [r for r in cfg['repos'] if r['name']!=name]
@@ -225,10 +231,36 @@ def get_schedule():
         'next_server': js.next_run_time.isoformat() if js and js.next_run_time else None
     })
 
-# Scheduler setup
+# Settings API
+@app.route('/api/settings', methods=['GET'])
+@require_token
+def get_settings():
+    cfg = load_config()
+    return jsonify({
+        'repo_interval': cfg.get('repo_interval', 24),
+        'server_interval': cfg.get('server_interval', 12)
+    })
+
+@app.route('/api/settings', methods=['POST'])
+@require_token
+def update_settings():
+    data = request.json or {}
+    cfg = load_config()
+    cfg['repo_interval'] = data.get('repo_interval', cfg.get('repo_interval', 24))
+    cfg['server_interval'] = data.get('server_interval', cfg.get('server_interval', 12))
+    save_config(cfg)
+    # Reschedule jobs
+    sched.reschedule_job('repo_check', trigger='interval', hours=cfg['repo_interval'])
+    sched.reschedule_job('server_check', trigger='interval', hours=cfg['server_interval'])
+    return jsonify({'status':'ok'})
+
+# Scheduler setup with configurable intervals
+cfg = load_config()
+repo_interval = cfg.get('repo_interval', 24)
+server_interval = cfg.get('server_interval', 12)
 sched = BackgroundScheduler()
-sched.add_job(runner.check_repos, 'interval', hours=24, id='repo_check')
-sched.add_job(runner.check_servers, 'interval', hours=12, id='server_check')
+sched.add_job(runner.check_repos, 'interval', hours=repo_interval, id='repo_check')
+sched.add_job(runner.check_servers, 'interval', hours=server_interval, id='server_check')
 sched.start()
 
 if __name__ == '__main__':

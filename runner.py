@@ -63,6 +63,12 @@ def check_repos():
             if last_stored and latest_sha != last_stored:
                 msg = f"New commit {latest_sha} detected in {repo_name}@{branch}"
                 logger.info(msg)
+                # Auto-deploy: run all active commands for this repo
+                for cmd in cfg.get('commands', []):
+                    if cmd.get('active') and cmd.get('repo') == repo_name:
+                        logger.info(f"Triggering command {cmd['id']} for repo {repo_name}")
+                        run_result = run_command(cmd['id'])
+                        logger.info(f"Command {cmd['id']} result: {run_result}")
             # Update stored commit and last_check always
             repo_entry['last_commit'] = latest_sha
             repo_entry['last_check'] = now_iso
