@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-import os
+import os, shlex, base64, logging
 import json
 import logging
 import paramiko
@@ -122,82 +122,116 @@ def check_servers():
     save_config(cfg)
 
 
-def run_command(cmd_id):
-    # Load configuration
-    cfg = load_config()
-    cmds = cfg.get('commands', [])
-    cmd_entry = next((c for c in cmds if c['id'] == cmd_id), None)
+def _b64_basic(token: str) -> str:
+    """
+    GitHub accepts HTTP Basic where the *password* is the PAT
+    and the user part can be empty (':<PAT>') or the literal
+    string 'x-access-token'.  Either works; we use the empty
+    user because it gives the shortest header.
+    """
+    raw = f":{token}".encode()              # -> b":ghp_xxx..."
+    return base64.b64encode(raw).decode()   # -> "OmdocGhwdF8uLi4="
+
+
+def run_command(cmd_id: str):
+    # ---------- config lookup ----------
+    cfg       = load_config()
+    cmd_entry = next((c for c in cfg.get('commands', []) if c['id'] == cmd_id), None)
     if not cmd_entry:
         return {'error': f'Command {cmd_id} not found'}
     if not cmd_entry.get('active', False):
         return {'error': f'Command {cmd_id} is inactive'}
 
-    # Gather repo info
-    repo_name = cmd_entry['repo']
+    repo_name  = cmd_entry['repo']
     repo_entry = next((r for r in cfg.get('repos', []) if r['name'] == repo_name), {})
-    token = repo_entry.get('token') or None
-    branch = repo_entry.get('branch', 'main')
-    # Retrieve latest commit SHA
-    gh = Github(token) if token else Github()
-    api_repo = gh.get_repo(repo_name)
-    commit_sha = api_repo.get_commits(sha=branch)[0].sha
+    token      = repo_entry.get('token') or None
+    branch     = repo_entry.get('branch', 'main')
 
-    # SSH into server
-    host = cmd_entry['server']
-    srv_entry = next((s for s in cfg.get('servers', []) if s['host'] == host), {})
-    user = srv_entry.get('user')
-    key_path = os.path.expanduser(srv_entry.get('key', '~/.ssh/id_rsa'))
-    # Prepare remote repo directory
-    dir_name = repo_name.replace('/', '_')
-    remote_base = '~/rpr'
-    remote_path = f"{remote_base}/{dir_name}"
+    gh         = Github(token) if token else Github()
+    commit_sha = gh.get_repo(repo_name).get_commits(sha=branch)[0].sha
 
-    command = cmd_entry['command']
-    now_iso = datetime.utcnow().isoformat()
+    host       = cmd_entry['server']
+    srv_entry  = next((s for s in cfg.get('servers', []) if s['host'] == host), {})
+    user       = srv_entry.get('user')
+    key_path   = os.path.expanduser(srv_entry.get('key', '~/.ssh/id_rsa'))
+
+    # ---------- paths & commands ----------
+    dir_name     = repo_name.replace('/', '_')
+    remote_base  = '~/rpr'
+    remote_path  = f"{remote_base}/{dir_name}"
+    now_iso      = datetime.utcnow().isoformat()
+
+    # Build the git commands
+    if token:
+        repo_user = repo_name.split('/')[0]
+
+        auth_b64  = _b64_basic(token)
+        #auth_flag = f'git -c http.extraheader="Authorization: Basic {auth_b64}"'
+        #auth_flag = f'git -c http.extraheader="Authorization: Bearer {token}"'
+        # prevent any interactive prompt if auth fails
+        clone_cmd = (
+            f'GIT_TERMINAL_PROMPT=0 ' # {auth_flag} '
+            f'git clone https://{repo_user}:{token}@github.com/{repo_name}.git {shlex.quote(dir_name)}'
+        )
+        fetch_cmd = f'GIT_TERMINAL_PROMPT=0 git fetch --all'
+    else:
+        clone_cmd = f'git clone https://github.com/{repo_name}.git {shlex.quote(dir_name)}'
+        fetch_cmd = 'git fetch --all'
+
+    git_setup = ' && '.join([
+        f"mkdir -p {remote_base}",
+        f"cd {remote_base}",
+        f'if [ ! -d {shlex.quote(dir_name)} ]; then {clone_cmd}; fi',
+        f"cd {shlex.quote(dir_name)}",
+        fetch_cmd,
+        f"git checkout {commit_sha} --force"
+    ])
+
     try:
+        # ---------- SSH session ----------
         ssh = paramiko.SSHClient()
         ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
         ssh.connect(hostname=host, username=user, key_filename=key_path, timeout=10)
-        # Clone or update repo on remote
-        git_cmds = [
-            f"mkdir -p {remote_base}",
-            f"cd {remote_base}",
-            f"if [ ! -d \"{dir_name}\" ]; then git clone https://github.com/{repo_name}.git {dir_name}; fi",
-            f"cd {dir_name}",
-            "git fetch --all",
-            f"git checkout {commit_sha} --force"
-        ]
-        full_setup = ' && '.join(git_cmds)
-        stdin, stdout, stderr = ssh.exec_command(full_setup)
-        # Wait for setup to finish
-        exit_status = stdout.channel.recv_exit_status()
-        if exit_status != 0:
-            setup_err = stderr.read().decode().strip()
-            logger.error(f"[COMMAND {cmd_id}] setup failed: {setup_err}")
+
+        # ---------- clone / update ----------
+        stdin, stdout, stderr = ssh.exec_command(git_setup)
+        if stdout.channel.recv_exit_status() != 0:
+            err = stderr.read().decode().strip()
+            logger.error(f"[COMMAND {cmd_id}] setup failed: {err}")
             ssh.close()
-            return {'error': 'setup_failed', 'details': setup_err}
-        # Execute user command in repo directory
-        full_cmd = f"cd {remote_path} && {command}"
-        stdin, stdout, stderr = ssh.exec_command(full_cmd)
-        # Wait for command to complete
-        cmd_status = stdout.channel.recv_exit_status()
-        out = stdout.read().decode().strip()
-        err = stderr.read().decode().strip()
+            return {'error': 'setup_failed', 'details': err}
+
+        # ---------- user command ----------
+        user_cmd = f"cd {remote_path} && {cmd_entry['command']}"
+        stdin, stdout, stderr = ssh.exec_command(user_cmd)
+        status = stdout.channel.recv_exit_status()
+        out    = stdout.read().decode().strip()
+        err    = stderr.read().decode().strip()
         ssh.close()
-        if cmd_status != 0:
-            logger.error(f"[COMMAND {cmd_id}] command exited with {cmd_status}")
-        # Log output
+
+        if status != 0:
+            logger.error(f"[COMMAND {cmd_id}] command exited with {status}")
+
         logger.info(f"[COMMAND {cmd_id}] {out}")
         if err:
             logger.error(f"[COMMAND {cmd_id}] ERR: {err}")
-        # Update last_run and last_commit
-        cmd_entry['last_run'] = now_iso
+
+        # ---------- bookkeeping ----------
+        cmd_entry['last_run']     = now_iso
         repo_entry['last_commit'] = commit_sha
         save_config(cfg)
-        return {'status': 'ok', 'commit': commit_sha, 'output': out, 'error': err, 'last_run': now_iso}
-    except Exception as e:
-        logger.error(f"[COMMAND {cmd_id}] execution failed: {e}")
-        return {'error': str(e)}
+
+        return {
+            'status': 'ok',
+            'commit': commit_sha,
+            'output': out,
+            'error': err,
+            'last_run': now_iso
+        }
+
+    except Exception as exc:
+        logger.error(f"[COMMAND {cmd_id}] execution failed: {exc}")
+        return {'error': str(exc)}
 
 
 def main():

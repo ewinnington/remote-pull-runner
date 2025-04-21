@@ -202,3 +202,25 @@
 - Implement JavaScript in `main.js` to load and update settings
 - Test that interval changes reschedule background jobs
 - Add UI indicator/logging for automatic deployments
+
+---
+
+## User Testing Results (Private Repo Bug)
+
+**Date:** 2025-04-21
+
+- For private repositories with a provided GitHub PAT, API clone via HTTPS fails: 404 repository not found.
+- `runner.check_repos` may also error 404 if GitHub API call does not include the PAT correctly.
+
+*Plan to Fix:*
+1. Ensure PyGithub API calls use the stored `token` for authentication when fetching commits.
+2. In `run_command`, use the `token` to construct the HTTPS clone URL (`https://<token>@github.com/owner/repo.git`) for private repo checkouts.
+3. Optionally support SSH-based cloning if SSH keys are configured for GitHub access.
+4. Update tests and documentation to cover private repo use case.
+
+---
+
+*Next:*
+- Implement token-authenticated clone URL in `runner.run_command`.
+- Verify API authentication in `runner.check_repos`.
+- Add documentation note about private repo support.
