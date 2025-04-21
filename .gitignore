@@ -1,4 +1,5 @@
 .githubPAT
+config.json
 keypair
 venv/
 logs/
