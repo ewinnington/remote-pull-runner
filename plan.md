@@ -102,3 +102,69 @@
 - Implement `/commands/view` route in `app.py`
 - Support full GitHub repo URLs by parsing input to owner/repo
 - Adjust documentation if needed
+
+---
+
+## User Testing Results (2nd Round, 2025-04-21)
+
+- On Repos view, Delete button sends DELETE for full URL path (`https://github.com/...`), causing 404
+- "Next Repo Check" remains "Loading..." (schedule not fetched/populated)
+- "Next Server Check" remains "Loading..." (schedule not fetched/populated)
+- Trigger Check button remains active immediately; would be better to disable/animate until refresh
+- Commands view:
+  - Repo and Server inputs are free-text; should use dropdowns of enrolled entries
+  - RUN command action uses default SSH key (`~/.ssh/id_rsa`) instead of the server's configured key, causing file not found error
+
+---
+
+*Next:*
+1. Fix DELETE endpoint routing/UI for repos with normalized names (encode slashes or strip URL schemes)
+2. Fetch `/api/schedule` in JS and populate "Next Repo Check" and "Next Server Check" spans
+3. Disable/animate Trigger buttons on click until checks complete or timeout
+4. In Commands UI, load enrolled repos and servers for dropdown select inputs instead of text
+5. Update `runner.run_command` to look up server config for key and user instead of defaults
+6. Write unit tests for critical API endpoints and runner functions
+7. Update documentation to reflect input normalization and UI improvements
+
+---
+
+## User Testing Results (3rd Round, 2025-04-21)
+
+- When a server check fails and retries are in progress, the `active` flag remains `true`; should reflect a `retry` state until final status is determined
+- Commands view dropdowns present but need verification that only valid enrolled repos and servers appear
+
+---
+
+*Next:*
+1. Introduce a `retry` status in server entries during retry attempts; update UI to reflect this state
+2. Ensure Commands page dropdowns dynamically list only active repos and servers
+3. Update server check logic to transition `active` between `true`, `retry`, and `false` based on connectivity
+4. Add visual indicator in UI for servers in `retry` status
+
+---
+
+## New Feature: Store Last Commit Hash
+
+**Date:** 2025-04-21
+
+- Extend repo configuration to include `last_commit` field
+- Update `config_manager.py` to initialize `last_commit` when enrolling repos
+- Modify `runner.check_repos` to compare commit SHA instead of only timestamps
+- Update API `add-repo` endpoint to set `last_commit` initially
+- Update README to document new behavior
+
+---
+
+## Last Commit Feature (Completed)
+
+**Date:** 2025-04-21
+
+- `config_manager.py` now initializes `last_commit` on enrollment
+- `runner.check_repos` compares and updates `last_commit` based on commit SHA
+- `runner.run_command` clones or updates the repository on the remote server before command execution and updates `last_commit`
+
+*Next:*
+- Expose `last_commit` in the API `/api/repos` response
+- Update the Repos UI to display `last_commit` in the table
+- Update README with `last_commit` behavior
+- Verify remote command execution clones with correct checkouts

@@ -9,11 +9,15 @@
 <form id="add-command-form" class="row g-3">
   <div class="col-md-4">
     <label class="form-label">Repo</label>
-    <input type="text" name="repo" class="form-control" required>
+    <select id="repo" name="repo" class="form-select" required>
+      <option value="" disabled selected>Select a repository</option>
+    </select>
   </div>
   <div class="col-md-4">
     <label class="form-label">Server</label>
-    <input type="text" name="server" class="form-control" required>
+    <select id="server" name="server" class="form-select" required>
+      <option value="" disabled selected>Select a server</option>
+    </select>
   </div>
   <div class="col-md-4">
     <label class="form-label">Command</label>

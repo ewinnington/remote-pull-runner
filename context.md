@@ -10,4 +10,4 @@ Refer to plan.md to figure out where you were and what is next.
 
 Don't give up. 
 
-Do basics first, design work last.
+Spend some time on design work now the basic functionality is in place. 

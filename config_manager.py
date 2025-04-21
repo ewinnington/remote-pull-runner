@@ -41,7 +41,8 @@ def add_repo(args):
         'token': args.token or '',
         'branch': args.branch or 'main',
         'active': True,
-        'last_check': '1970-01-01T00:00:00'
+        'last_check': '1970-01-01T00:00:00',
+        'last_commit': ''
     }
     cfg['repos'].append(entry)
     save_config(cfg)

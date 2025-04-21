@@ -48,8 +48,6 @@ def check_repos():
     cfg = load_config()
     repos = cfg.get('repos', [])
     now_iso = datetime.utcnow().isoformat()
-    gh = Github()  # For token support, extend to read per-repo token if needed
-
     for repo_entry in repos:
         if not repo_entry.get('active', False):
             continue
@@ -57,21 +55,19 @@ def check_repos():
         token = repo_entry.get('token') or None
         branch = repo_entry.get('branch', 'main')
         try:
-            g = Github(token) if token else gh
-            repo = g.get_repo(repo_name)
-            commit = repo.get_commits(sha=branch)[0].commit.committer.date
-            last_check = datetime.fromisoformat(repo_entry.get('last_check'))
-            if commit > last_check:
-                msg = f"New commit detected in {repo_name}@{branch}: {commit.isoformat()}"
+            gh_instance = Github(token) if token else Github()
+            api_repo = gh_instance.get_repo(repo_name)
+            latest = api_repo.get_commits(sha=branch)[0]
+            latest_sha = latest.sha
+            last_stored = repo_entry.get('last_commit')
+            if last_stored and latest_sha != last_stored:
+                msg = f"New commit {latest_sha} detected in {repo_name}@{branch}"
                 logger.info(msg)
-            else:
-                logger.info(f"No new commits for {repo_name}@{branch}")
+            # Update stored commit and last_check always
+            repo_entry['last_commit'] = latest_sha
+            repo_entry['last_check'] = now_iso
         except Exception as e:
             logger.error(f"Error checking {repo_name}: {e}")
-        finally:
-            # Update last_check regardless of result
-            repo_entry['last_check'] = now_iso
-
     cfg['repos'] = repos
     save_config(cfg)
 
@@ -81,8 +77,12 @@ def check_servers():
     servers = cfg.get('servers', [])
     now_iso = datetime.utcnow().isoformat()
     for srv in servers:
-        if not srv.get('active', False):
+        # Only check if active or in retry state
+        status = srv.get('active')
+        if status == False:
             continue
+        # Mark as retry when starting attempts
+        srv['active'] = 'retry'
         host = srv['host']
         user = srv.get('user')
         key_path = os.path.expanduser(srv.get('key', '~/.ssh/id_rsa'))
@@ -104,8 +104,13 @@ def check_servers():
                 conn_logger.error(f"[{host}] attempt {attempt} failed: {e}")
                 if attempt < retries:
                     time.sleep(delay)
-        if not success:
+        # Finalize status after attempts
+        if success:
+            srv['active'] = True
+        else:
             conn_logger.warning(f"[{host}] unreachable after {retries} attempts")
+            srv['active'] = False
+        # Update last_check timestamp
         srv['last_check'] = now_iso
     cfg['servers'] = servers
     save_config(cfg)
@@ -121,28 +126,69 @@ def run_command(cmd_id):
     if not cmd_entry.get('active', False):
         return {'error': f'Command {cmd_id} is inactive'}
 
+    # Gather repo info
+    repo_name = cmd_entry['repo']
+    repo_entry = next((r for r in cfg.get('repos', []) if r['name'] == repo_name), {})
+    token = repo_entry.get('token') or None
+    branch = repo_entry.get('branch', 'main')
+    # Retrieve latest commit SHA
+    gh = Github(token) if token else Github()
+    api_repo = gh.get_repo(repo_name)
+    commit_sha = api_repo.get_commits(sha=branch)[0].sha
+
     # SSH into server
     host = cmd_entry['server']
-    user = cmd_entry.get('user') or None
-    key_path = os.path.expanduser(cmd_entry.get('key', '~/.ssh/id_rsa'))
+    srv_entry = next((s for s in cfg.get('servers', []) if s['host'] == host), {})
+    user = srv_entry.get('user')
+    key_path = os.path.expanduser(srv_entry.get('key', '~/.ssh/id_rsa'))
+    # Prepare remote repo directory
+    dir_name = repo_name.replace('/', '_')
+    remote_base = '~/rpr'
+    remote_path = f"{remote_base}/{dir_name}"
+
     command = cmd_entry['command']
     now_iso = datetime.utcnow().isoformat()
     try:
         ssh = paramiko.SSHClient()
         ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
         ssh.connect(hostname=host, username=user, key_filename=key_path, timeout=10)
-        stdin, stdout, stderr = ssh.exec_command(command)
+        # Clone or update repo on remote
+        git_cmds = [
+            f"mkdir -p {remote_base}",
+            f"cd {remote_base}",
+            f"if [ ! -d \"{dir_name}\" ]; then git clone https://github.com/{repo_name}.git {dir_name}; fi",
+            f"cd {dir_name}",
+            "git fetch --all",
+            f"git checkout {commit_sha} --force"
+        ]
+        full_setup = ' && '.join(git_cmds)
+        stdin, stdout, stderr = ssh.exec_command(full_setup)
+        # Wait for setup to finish
+        exit_status = stdout.channel.recv_exit_status()
+        if exit_status != 0:
+            setup_err = stderr.read().decode().strip()
+            logger.error(f"[COMMAND {cmd_id}] setup failed: {setup_err}")
+            ssh.close()
+            return {'error': 'setup_failed', 'details': setup_err}
+        # Execute user command in repo directory
+        full_cmd = f"cd {remote_path} && {command}"
+        stdin, stdout, stderr = ssh.exec_command(full_cmd)
+        # Wait for command to complete
+        cmd_status = stdout.channel.recv_exit_status()
         out = stdout.read().decode().strip()
         err = stderr.read().decode().strip()
         ssh.close()
+        if cmd_status != 0:
+            logger.error(f"[COMMAND {cmd_id}] command exited with {cmd_status}")
         # Log output
         logger.info(f"[COMMAND {cmd_id}] {out}")
         if err:
             logger.error(f"[COMMAND {cmd_id}] ERR: {err}")
-        # Update last_run
+        # Update last_run and last_commit
         cmd_entry['last_run'] = now_iso
+        repo_entry['last_commit'] = commit_sha
         save_config(cfg)
-        return {'status': 'ok', 'output': out, 'error': err, 'last_run': now_iso}
+        return {'status': 'ok', 'commit': commit_sha, 'output': out, 'error': err, 'last_run': now_iso}
     except Exception as e:
         logger.error(f"[COMMAND {cmd_id}] execution failed: {e}")
         return {'error': str(e)}

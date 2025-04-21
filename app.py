@@ -109,7 +109,7 @@ def add_repo():
     save_config(cfg)
     return jsonify({'status':'ok'}),201
 
-@app.route('/api/repos/<name>', methods=['DELETE'])
+@app.route('/api/repos/<path:name>', methods=['DELETE'])
 @require_token
 def delete_repo(name):
     cfg = load_config()
