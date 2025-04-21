@@ -1,0 +1,26 @@
+{% extends 'layout.html' %}
+{% block content %}
+<h2>Commands</h2>
+<table class="table" id="commands-table">
+  <thead><tr><th>ID</th><th>Repo</th><th>Server</th><th>Command</th><th>Active</th><th>Last Run</th><th>Actions</th></tr></thead>
+  <tbody></tbody>
+</table>
+<h3>Add Command</h3>
+<form id="add-command-form" class="row g-3">
+  <div class="col-md-4">
+    <label class="form-label">Repo</label>
+    <input type="text" name="repo" class="form-control" required>
+  </div>
+  <div class="col-md-4">
+    <label class="form-label">Server</label>
+    <input type="text" name="server" class="form-control" required>
+  </div>
+  <div class="col-md-4">
+    <label class="form-label">Command</label>
+    <input type="text" name="command" class="form-control" required>
+  </div>
+  <div class="col-12">
+    <button type="submit" class="btn btn-primary">Add Command</button>
+  </div>
+</form>
+{% endblock %}

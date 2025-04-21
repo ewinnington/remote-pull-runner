@@ -4,7 +4,7 @@ Implement the functionality step by step.
 
 You are on a windows10 machine with python3.10.11 installed, the linux machine has python 3.12.3. Create a requirements file for your packages. 
 
-You can always refer to content.md to understand your baseline.
+You can always refer to context.md to understand your baseline.
 
 Refer to plan.md to figure out where you were and what is next.
 

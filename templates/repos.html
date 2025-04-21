@@ -1,0 +1,30 @@
+{% extends 'layout.html' %}
+{% block content %}
+<h2>Repositories</h2>
+<div class="row mb-3">
+  <div class="col"><strong>Next Repo Check:</strong> <span id="next-repo">Loading...</span></div>
+  <div class="col text-end"><button id="trigger-repos" class="btn btn-secondary">Trigger Check</button></div>
+</div>
+<table class="table" id="repos-table">
+  <thead><tr><th>Name</th><th>Branch</th><th>Active</th><th>Last Check</th><th>Actions</th></tr></thead>
+  <tbody></tbody>
+</table>
+<h3>Add Repository</h3>
+<form id="add-repo-form" class="row g-3">
+  <div class="col-md-4">
+    <label class="form-label">Repo (user/repo)</label>
+    <input type="text" name="repo" class="form-control" required>
+  </div>
+  <div class="col-md-4">
+    <label class="form-label">Branch</label>
+    <input type="text" name="branch" class="form-control" value="main">
+  </div>
+  <div class="col-md-4">
+    <label class="form-label">Token (optional)</label>
+    <input type="text" name="token" class="form-control">
+  </div>
+  <div class="col-12">
+    <button type="submit" class="btn btn-primary">Add Repository</button>
+  </div>
+</form>
+{% endblock %}

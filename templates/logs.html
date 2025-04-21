@@ -1,0 +1,11 @@
+{% extends 'layout.html' %}
+{% block content %}
+<h2>Logs</h2>
+<div class="mb-3">
+  <button id="refresh-logs" class="btn btn-secondary">Refresh Logs</button>
+</div>
+<h3>Activity Log</h3>
+<pre id="activity-log" class="border p-2" style="height:200px; overflow:auto;"></pre>
+<h3>Connectivity Log</h3>
+<pre id="connectivity-log" class="border p-2" style="height:200px; overflow:auto;"></pre>
+{% endblock %}

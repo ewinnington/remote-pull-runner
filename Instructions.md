@@ -4,6 +4,7 @@ Remote-Pull-Runner is a simple CI-CD tool that integrates with Github.
 
 1) It allows you to enroll a remote github repository in the tool (saved in json config).
 Private repos are supported with a personal access token. The tool uses the Github API to check for changes in the repo. It uses the Github API to get the last commit time and compares it with the last check time. If the last commit time is greater than the last check time, it is considered a change. The tool also uses the Github API to get the list of branches and allows you to choose which branch to monitor (default main).
+1a) Stores github PATs with expiration date. 
 2) It allows you to enroll a remote server (or localhost) in the tool (saved in json config) - with ssh keys only. 
 3) It presents a simple html web interface where: 
   - you can enroll repos, view the list, set them active / inactive, delete them, a configurable timer to check the repo for changes (default 24 hours - down to 1 minute), this also shows the last commit time and last check time. All this information is saved in the json config. You can also choose which branch to monitor (default main). 
