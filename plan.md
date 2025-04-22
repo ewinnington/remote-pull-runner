@@ -224,3 +224,33 @@
 - Implement token-authenticated clone URL in `runner.run_command`.
 - Verify API authentication in `runner.check_repos`.
 - Add documentation note about private repo support.
+
+---
+
+## Feature: Add Support for Command Secrets
+
+**Date:** 2025-04-22
+
+- Extend command configuration in `config_manager.py` to support secrets (key-value pairs).
+- Update JSON schema for commands in `config.json` to include a `secrets` array of objects with `key` and `value`.
+- Add CLI commands in `config_manager.py` for `add-secret`, `remove-secret`, `list-secrets` per command.
+- Extend API endpoints in `app.py` to manage secrets for commands.
+- Update `templates/commands.html` and `static/main.js` to allow adding, editing, and removing secrets in the UI.
+- Modify `runner.run_command` to inject these secrets as environment variables in the SSH execution.
+- Write unit tests to cover secrets management and environment injection.
+
+---
+
+## Feature: Command Secrets API & UI (Completed)
+
+**Date:** 2025-04-22
+
+- Added Flask API endpoints for listing, adding, and deleting secrets on `/api/commands/<cmd_id>/secrets`
+- Updated `static/main.js` and `commands.html` to provide a Secrets button for managing secrets via prompts
+- Runner now injects secrets as environment variables during SSH command execution
+
+*Next:*
+- Write unit tests for secrets management (CLI, API, runner)
+- Improve UI: use a modal dialog or dedicated form for secrets management instead of prompt/alert
+- Add documentation section in README.md for using command secrets
+- Ensure environment variable escaping and security considerations

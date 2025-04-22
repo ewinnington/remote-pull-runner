@@ -2,5 +2,6 @@
 config.json
 keypair
 venv/
+.venv/
 logs/
 __pycache__/

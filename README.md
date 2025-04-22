@@ -77,6 +77,34 @@ Remote Pull Runner is a micro CI/CD tool built with Python and Flask. It monitor
 3. Use the generated token from `config.json` to log in.
 4. Manage repositories, servers, commands, view logs, and trigger checks.
 
+## Command Secrets
+
+Remote Pull Runner supports storing per-command secrets (key-value pairs) that are injected as environment variables when running commands over SSH.
+
+### CLI
+
+- Add a secret to a command:
+  ```bash
+  python config_manager.py add-secret --id <CMD_ID> --key <KEY> --value <VALUE>
+  ```
+- List secrets for a command:
+  ```bash
+  python config_manager.py list-secrets --id <CMD_ID>
+  ```
+- Remove a secret from a command:
+  ```bash
+  python config_manager.py remove-secret --id <CMD_ID> --key <KEY>
+  ```
+
+### Web UI
+
+On the Commands page, click the **Secrets** button for a command to view, add, or remove secrets via the UI prompts.
+
+### Notes
+
+- Secrets are passed as environment variables to the remote process, so you can reference them in your scripts (e.g. `$KEY`).
+- Ensure sensitive values are handled appropriately and avoid logging secrets.
+
 ## Testing
 
 Use the REST API or UI to perform actions. For example, use the UI to add a repo and then trigger a check. Logs are in the `logs/` directory.

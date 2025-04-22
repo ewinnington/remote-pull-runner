@@ -201,9 +201,16 @@ def run_command(cmd_id: str):
             ssh.close()
             return {'error': 'setup_failed', 'details': err}
 
+        # Gather secrets for injection
+        env = {s['key']: s['value'] for s in cmd_entry.get('secrets', [])}
+
         # ---------- user command ----------
         user_cmd = f"cd {remote_path} && {cmd_entry['command']}"
-        stdin, stdout, stderr = ssh.exec_command(user_cmd)
+        # Execute the command with secrets in the environment if any
+        if env:
+            stdin, stdout, stderr = ssh.exec_command(user_cmd, environment=env)
+        else:
+            stdin, stdout, stderr = ssh.exec_command(user_cmd)
         status = stdout.channel.recv_exit_status()
         out    = stdout.read().decode().strip()
         err    = stderr.read().decode().strip()

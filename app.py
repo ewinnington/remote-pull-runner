@@ -189,6 +189,47 @@ def run_command_api(cmd_id):
     result = runner.run_command(cmd_id)
     return jsonify(result)
 
+@app.route('/api/commands/<cmd_id>/secrets', methods=['GET'])
+@require_token
+def get_command_secrets(cmd_id):
+    cfg = load_config()
+    cmd = next((c for c in cfg.get('commands', []) if c['id'] == cmd_id), None)
+    if not cmd:
+        return jsonify({'error':'Command not found'}), 404
+    return jsonify(cmd.get('secrets', []))
+
+@app.route('/api/commands/<cmd_id>/secrets', methods=['POST'])
+@require_token
+def add_command_secret(cmd_id):
+    data = request.json or {}
+    key = data.get('key')
+    value = data.get('value')
+    if not key or value is None:
+        return jsonify({'error':'Missing key or value'}), 400
+    cfg = load_config()
+    for c in cfg.get('commands', []):
+        if c['id'] == cmd_id:
+            sec = c.setdefault('secrets', [])
+            sec.append({'key': key, 'value': value})
+            save_config(cfg)
+            return jsonify({'key':key,'value':value}), 201
+    return jsonify({'error':'Command not found'}), 404
+
+@app.route('/api/commands/<cmd_id>/secrets/<key>', methods=['DELETE'])
+@require_token
+def delete_command_secret(cmd_id, key):
+    cfg = load_config()
+    for c in cfg.get('commands', []):
+        if c['id'] == cmd_id:
+            secrets = c.get('secrets', [])
+            filtered = [s for s in secrets if s['key'] != key]
+            if len(filtered) < len(secrets):
+                c['secrets'] = filtered
+                save_config(cfg)
+                return jsonify({'status':'ok'})
+            return jsonify({'error':'Secret not found'}), 404
+    return jsonify({'error':'Command not found'}), 404
+
 # Manual triggers
 @app.route('/api/check/repos', methods=['POST'])
 @require_token

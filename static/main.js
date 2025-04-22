@@ -146,6 +146,7 @@ document.addEventListener('DOMContentLoaded', async () => {
           <td>${c.active}</td>
           <td>${c.last_run}</td>
           <td>
+            <button class="btn btn-secondary btn-sm" onclick="manageSecrets('${c.id}')">Secrets</button>
             <button class="btn btn-primary btn-sm" onclick="runCommand('${c.id}')">Run</button>
             <button class="btn btn-danger btn-sm" onclick="deleteCommand('${c.id}')">Delete</button>
           </td>`;
@@ -154,6 +155,26 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
     window.deleteCommand = async (id) => { await request(`/api/commands/${id}`, { method: 'DELETE', headers }); loadCommands(); };
     window.runCommand = async (id) => { const json = await request(`/api/commands/${id}/run`, { method: 'POST', headers }); alert(JSON.stringify(json)); };
+    window.manageSecrets = async (id) => {
+      // Fetch existing secrets
+      const secrets = await request(`/api/commands/${id}/secrets`, { method: 'GET', headers });
+      alert('Current secrets:\n' + (secrets.map(s => `${s.key}=${s.value}`).join('\n') || '<none>'));
+      if (confirm('Add a new secret?')) {
+        const key = prompt('Secret key:');
+        const value = prompt('Secret value:');
+        if (key && value !== null) await request(`/api/commands/${id}/secrets`, {
+          method: 'POST', headers,
+          body: JSON.stringify({ key, value })
+        });
+      }
+      if (confirm('Remove a secret?')) {
+        const rkey = prompt('Key to remove:');
+        if (rkey) await request(`/api/commands/${id}/secrets/${encodeURIComponent(rkey)}`, {
+          method: 'DELETE', headers
+        });
+      }
+      loadCommands();
+    };
     document.getElementById('add-command-form').addEventListener('submit', async e => {
       e.preventDefault();
       await request('/api/commands', { method: 'POST', headers, body: JSON.stringify({ 
