@@ -5,6 +5,7 @@ import os, json, uuid
 import runner
 from datetime import datetime
 import config_manager
+import netifaces, socket
 
 CONFIG_FILE = 'config.json'
 LOG_DIR = 'logs'
@@ -295,6 +296,42 @@ def update_settings():
     sched.reschedule_job('server_check', trigger='interval', hours=cfg['server_interval'])
     return jsonify({'status':'ok'})
 
+
+def get_names_4_ips(ips):
+    names = []
+    for ip in ips:
+        try:
+            name = socket.gethostbyaddr(ip)[0]
+            names.append(name)
+        except Exception:
+            names.append(None)
+    return names
+
+def get_all_ip():
+    all_addrs = []
+    for interface in netifaces.interfaces():
+        addrs = netifaces.ifaddresses(interface).get(netifaces.AF_INET, [])
+        for addr in addrs:
+            all_addrs.append(addr['addr'])
+    if not all_addrs:
+        raise RuntimeError("No IP addresses found")
+    return all_addrs
+
+# find the ip that is on the ts.net domain
+def get_ip_on_ts_net_domain():
+    all_addrs = get_all_ip()
+    for addr in all_addrs:
+        try:
+            name = socket.gethostbyaddr(addr)[0]
+            if name.endswith('.ts.net.'):
+                return addr
+        except Exception:
+            continue
+    raise RuntimeError("No IP address found on ts.net domain")
+
+
+
+
 # Scheduler setup with configurable intervals
 cfg = load_config()
 repo_interval = cfg.get('repo_interval', 24)
@@ -305,4 +342,7 @@ sched.add_job(runner.check_servers, 'interval', hours=server_interval, id='serve
 sched.start()
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000)
+    #ts_ip = get_tailscale_ip('Unknown adapter Tailscale')  # or the exact adapter name from ipconfig
+    #app.run(host=ts_ip, port=5000)
+    app.run(host=get_ip_on_ts_net_domain(), port=5000)
+    #app.run(host='0.0.0.0', port=5000)
