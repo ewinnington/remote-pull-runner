@@ -11,6 +11,7 @@
 </table>
 <h3>Add Repository</h3>
 <form id="add-repo-form" class="row g-3">
+  {{ csrf_token() }}
   <div class="col-md-4">
     <label class="form-label">Repo (user/repo)</label>
     <input type="text" name="repo" class="form-control" required>

@@ -270,3 +270,19 @@
 - Added `cryptography` dependency to `requirements.txt`.
 
 *Next:* Write unit tests for secrets management and improve UI with a dedicated modal dialog for secret operations.
+
+---
+
+## Security Hardening (Completed)
+
+**Date:** 2025-04-30
+
+- Moved repository access tokens from config.json into encrypted secrets via `secrets_manager`.
+- Removed plain `token` field from repo entries in API and CLI; now stored and managed as secrets.
+- Integrated CSRF protection for all state-changing Flask endpoints using Flask-WTF.
+- Hardened `auth_token` cookie with `HttpOnly`, `Secure`, and `SameSite='Lax'` attributes.
+- Added basic input sanitization in `config_manager` and `static/main.js` to deny any `<script>` tags (XSS protection).
+
+*Next:*
+- Write unit tests for CSRF protection and XSS sanitization logic.
+- Improve UI for secret management (modal dialogs rather than prompts).

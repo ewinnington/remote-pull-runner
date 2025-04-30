@@ -9,7 +9,16 @@ document.addEventListener('DOMContentLoaded', async () => {
   const headers = token ? { 'X-Auth-Token': token, 'Content-Type': 'application/json' } : { 'Content-Type': 'application/json' };
 
   // Error-handling fetch wrapper
-  async function request(url, opts) {
+  async function request(url, opts = {}) {
+    // Attach CSRF token for state-changing requests
+    const method = opts.method ? opts.method.toUpperCase() : 'GET';
+    if (method !== 'GET' && method !== 'HEAD') {
+      const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+      opts.headers = {
+        ...opts.headers,
+        'X-CSRFToken': csrfToken
+      };
+    }
     try {
       const res = await fetch(url, opts);
       const data = res.headers.get('Content-Type')?.includes('application/json')
@@ -34,6 +43,14 @@ document.addEventListener('DOMContentLoaded', async () => {
     } catch (e) { console.error(e); }
   }
 
+  // Sanitize to reject any script tags in values
+  function sanitizeVal(val) {
+    if (typeof val === 'string' && val.toLowerCase().includes('<script>')) {
+      throw new Error('Invalid content detected');
+    }
+    return val;
+  }
+
   // Repos Page
   if (document.getElementById('repos-table')) {
     const triggerBtn = document.getElementById('trigger-repos');
@@ -42,14 +59,18 @@ document.addEventListener('DOMContentLoaded', async () => {
       const repos = await request('/api/repos', { method: 'GET', headers });
       const tbody = document.querySelector('#repos-table tbody'); tbody.innerHTML = '';
       repos.forEach(r => {
+        const name = sanitizeVal(r.name);
+        const branch = sanitizeVal(r.branch);
+        const active = sanitizeVal(String(r.active));
+        const last_check = sanitizeVal(r.last_check);
+        const last_commit = r.last_commit || '';
         const tr = document.createElement('tr');
-        tr.innerHTML = `<td>${r.name}</td><td>${r.branch}</td><td>${r.active}</td><td>${r.last_check}</td><td>${r.last_commit || ''}</td>
-          <td><button class="btn btn-danger btn-sm" onclick="deleteRepo('${r.name}')">Delete</button></td>`;
+        tr.innerHTML = `<td>${name}</td><td>${branch}</td><td>${active}</td><td>${last_check}</td><td>${last_commit}</td><td><button class="btn btn-danger btn-sm" onclick="deleteRepo('${encodeURIComponent(name)}')">Delete</button></td>`;
         tbody.appendChild(tr);
       });
     }
     window.deleteRepo = async (name) => {
-      await request(`/api/repos/${encodeURIComponent(name)}`, { method: 'DELETE', headers });
+      await request(`/api/repos/${name}`, { method: 'DELETE', headers });
       loadRepos();
     };
     triggerBtn.addEventListener('click', async () => {
@@ -79,15 +100,14 @@ document.addEventListener('DOMContentLoaded', async () => {
       const svs = await request('/api/servers', { method: 'GET', headers });
       const tbody = document.querySelector('#servers-table tbody'); tbody.innerHTML = '';
       svs.forEach(s => {
-        // Badge for status
-        let statusBadge;
-        if (s.active === true) statusBadge = '<span class="badge bg-success">active</span>';
-        else if (s.active === false) statusBadge = '<span class="badge bg-danger">inactive</span>';
-        else if (s.active === 'retry') statusBadge = '<span class="badge bg-warning">retry</span>';
-        else statusBadge = `<span class="badge bg-secondary">${s.active}</span>`;
+        const host = sanitizeVal(s.host);
+        const user = sanitizeVal(s.user);
+        const statusBadge = s.active === true ? '<span class="badge bg-success">active</span>' :
+                            s.active === false ? '<span class="badge bg-danger">inactive</span>' :
+                            s.active === 'retry' ? '<span class="badge bg-warning">retry</span>' :
+                            `<span class=\"badge bg-secondary\">${s.active}</span>`;
         const tr = document.createElement('tr');
-        tr.innerHTML = `<td>${s.host}</td><td>${s.user}</td><td>${statusBadge}</td><td>${s.last_check}</td>
-          <td><button class="btn btn-danger btn-sm" onclick="deleteServer('${s.host}')">Delete</button></td>`;
+        tr.innerHTML = `<td>${host}</td><td>${user}</td><td>${statusBadge}</td><td>${sanitizeVal(s.last_check)}</td><td><button class="btn btn-danger btn-sm" onclick="deleteServer('${encodeURIComponent(host)}')">Delete</button></td>`;
         tbody.appendChild(tr);
       });
     }
@@ -137,18 +157,21 @@ document.addEventListener('DOMContentLoaded', async () => {
       const cmds = await request('/api/commands', { method: 'GET', headers });
       const tbody = document.querySelector('#commands-table tbody'); tbody.innerHTML = '';
       cmds.forEach(c => {
+        const repoName = sanitizeVal(c.repo);
+        const serverName = sanitizeVal(c.server);
+        const id = c.id;
         const tr = document.createElement('tr');
         tr.innerHTML = `
-          <td>${c.id}</td>
-          <td>${c.repo}</td>
-          <td>${c.server}</td>
+          <td>${id}</td>
+          <td>${repoName}</td>
+          <td>${serverName}</td>
           <td>${c.command}</td>
-          <td>${c.active}</td>
-          <td>${c.last_run}</td>
+          <td>${sanitizeVal(String(c.active))}</td>
+          <td>${sanitizeVal(c.last_run)}</td>
           <td>
-            <button class="btn btn-secondary btn-sm" onclick="manageSecrets('${c.id}')">Secrets</button>
-            <button class="btn btn-primary btn-sm" onclick="runCommand('${c.id}')">Run</button>
-            <button class="btn btn-danger btn-sm" onclick="deleteCommand('${c.id}')">Delete</button>
+            <button class="btn btn-secondary btn-sm" onclick="manageSecrets('${id}')">Secrets</button>
+            <button class="btn btn-primary btn-sm" onclick="runCommand('${id}')">Run</button>
+            <button class="btn btn-danger btn-sm" onclick="deleteCommand('${id}')">Delete</button>
           </td>`;
         tbody.appendChild(tr);
       });

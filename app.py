@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 from flask import Flask, request, jsonify, render_template, send_file, make_response, redirect, flash
+from flask_wtf import CSRFProtect
 from apscheduler.schedulers.background import BackgroundScheduler
 import os, json, uuid
 import runner
@@ -16,6 +17,7 @@ CONN_LOG = os.path.join(LOG_DIR, 'connectivity.log')
 
 app = Flask(__name__)
 app.secret_key = uuid.uuid4().hex
+csrf = CSRFProtect(app)
 
 # Load or initialize config and token
 def load_config():
@@ -62,7 +64,7 @@ def login():
         token_in = request.form.get('token')
         if token_in == TOKEN:
             resp = make_response(redirect('/repos/view'))
-            resp.set_cookie('auth_token', token_in)
+            resp.set_cookie('auth_token', token_in, httponly=True, secure=True, samesite='Lax')
             return resp
         else:
             flash('Invalid token', 'danger')
@@ -71,7 +73,7 @@ def login():
 @app.route('/logout')
 def logout():
     resp = make_response(redirect('/login'))
-    resp.set_cookie('auth_token', '', expires=0)
+    resp.set_cookie('auth_token', '', expires=0, httponly=True, secure=True, samesite='Lax')
     return resp
 
 @app.route('/repos/view')
@@ -106,9 +108,17 @@ def get_repos():
 def add_repo():
     data = request.json or {}
     name = normalize_repo(data.get('name',''))
-    repo = {'name': name, 'token':data.get('token',''),
-            'branch':data.get('branch','main'), 'active':True,
-            'last_check':'1970-01-01T00:00:00', 'last_commit':''}
+    # Move token to secrets storage
+    secrets_list = []
+    token_val = data.get('token')
+    if token_val:
+        secret_id = secrets_manager.store_secret(f"{name}_token", token_val)
+        secrets_list.append({'key': 'token', 'id': secret_id})
+    repo = {'name': name,
+            'branch': data.get('branch','main'), 'active': True,
+            'last_check': '1970-01-01T00:00:00', 'last_commit': ''}
+    if secrets_list:
+        repo['secrets'] = secrets_list
     cfg = load_config()
     cfg.setdefault('repos', [])
     cfg['repos'] = [r for r in cfg['repos'] if r['name']!=name]

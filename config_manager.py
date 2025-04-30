@@ -1,7 +1,4 @@
 #!/usr/bin/env python3
-"""
-Manage configuration for remote-pull-runner.
-"""
 import argparse
 import json
 import os
@@ -30,7 +27,18 @@ def save_config(cfg):
         json.dump(cfg, f, indent=2)
 
 
+def sanitize_input(val):
+    if '<script>' in val.lower():
+        print("Invalid input: script tags are not allowed")
+        exit(1)
+
+
 def add_repo(args):
+    sanitize_input(args.repo)
+    if args.branch:
+        sanitize_input(args.branch)
+    if args.token:
+        sanitize_input(args.token)
     cfg = load_config()
     repo_name = normalize_repo_url(args.repo)
     for r in cfg['repos']:
@@ -39,12 +47,15 @@ def add_repo(args):
             return
     entry = {
         'name': repo_name,
-        'token': args.token or '',
         'branch': args.branch or 'main',
         'active': True,
         'last_check': '1970-01-01T00:00:00',
-        'last_commit': ''
+        'last_commit': '',
+        'secrets': []
     }
+    if args.token:
+        secret_id = secrets_manager.store_secret(f"{repo_name}_token", args.token)
+        entry['secrets'].append({'key': 'token', 'id': secret_id})
     cfg['repos'].append(entry)
     save_config(cfg)
     print(f"Enrolled repository {repo_name}")
