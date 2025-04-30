@@ -254,3 +254,19 @@
 - Improve UI: use a modal dialog or dedicated form for secrets management instead of prompt/alert
 - Add documentation section in README.md for using command secrets
 - Ensure environment variable escaping and security considerations
+
+---
+
+## Secrets Encryption & Management (Completed)
+**Date:** 2025-04-30
+
+- Generated strong `encryption_key` and `api_key` on first run; stored in `keys.json` with `700` permissions.
+- Moved all sensitive values out of `config.json`; now stored in encrypted `secrets.json` with per-secret salt and `encrypted_data`.
+- Implemented `secrets_manager.py` for key generation, secret storage with PBKDF2+Fernet, masking, and secure deletion.
+- Updated CLI (`config_manager.py`) to call `secrets_manager.store_secret()`, list secrets masked, and delete encrypted secrets.
+- Updated Flask API (`app.py`) to manage secrets by ID, return masked values (`********xyz`), and restrict full decryption to internal runner.
+- Modified `runner.py` to decrypt secrets internally and inject into remote SSH environment.
+- Updated UI (`static/main.js`) to display masked secrets, use secret IDs for add/delete operations, and refresh commands view.
+- Added `cryptography` dependency to `requirements.txt`.
+
+*Next:* Write unit tests for secrets management and improve UI with a dedicated modal dialog for secret operations.

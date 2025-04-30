@@ -77,33 +77,34 @@ Remote Pull Runner is a micro CI/CD tool built with Python and Flask. It monitor
 3. Use the generated token from `config.json` to log in.
 4. Manage repositories, servers, commands, view logs, and trigger checks.
 
-## Command Secrets
+## Security Enhancements
 
-Remote Pull Runner supports storing per-command secrets (key-value pairs) that are injected as environment variables when running commands over SSH.
+- On first startup, a random `api_key` and `encryption_key` are generated and stored in 
+  `keys.json` (with `chmod 700` permissions).
+- Sensitive command secrets are moved out of `config.json` into encrypted storage in `secrets.json`.
+- Each secret is salted and encrypted using PBKDF2 + Fernet; only its last 3 characters (masked as `********xyz`) are exposed via the API/UI.
+- Full secret values are decrypted only internally by `secrets_manager` when commands run over SSH, and are never returned by any public endpoint.
 
-### CLI
-
-- Add a secret to a command:
+## Command Secrets (Updated)
+**Storage and Usage**
+- Add, list, and remove secrets via CLI (`config_manager.py add-secret`, `list-secrets`, `remove-secret`) or UI/API endpoints.
+- Secrets are stored encrypted; only masked values are shown:
   ```bash
-  python config_manager.py add-secret --id <CMD_ID> --key <KEY> --value <VALUE>
+  KEY = ********abc (id=secret-id)
   ```
-- List secrets for a command:
-  ```bash
-  python config_manager.py list-secrets --id <CMD_ID>
-  ```
-- Remove a secret from a command:
-  ```bash
-  python config_manager.py remove-secret --id <CMD_ID> --key <KEY>
-  ```
+- When running commands, secrets are automatically decrypted and injected as environment variables.
 
-### Web UI
+## Files and Permissions
+- `config.json`: no longer contains plaintext secrets; holds command entries with `secret_id` fields.
+- `keys.json`: stores `api_key` and `encryption_key`, created on first run, `chmod 700`.
+- `secrets.json`: stores encrypted secrets (`id`, `salt`, `encrypted_data`), `chmod 700`.
 
-On the Commands page, click the **Secrets** button for a command to view, add, or remove secrets via the UI prompts.
-
-### Notes
-
-- Secrets are passed as environment variables to the remote process, so you can reference them in your scripts (e.g. `$KEY`).
-- Ensure sensitive values are handled appropriately and avoid logging secrets.
+## Installation (Updated)
+After cloning and activating your virtualenv, install dependencies:
+```bash
+pip install -r requirements.txt
+```  
+Ensure `keys.json` and `secrets.json` will be created automatically with secure permissions when you start the app.
 
 ## Testing
 
@@ -113,5 +114,3 @@ Use the REST API or UI to perform actions. For example, use the UI to add a repo
 
 - Customize check intervals via UI
 - Add more detailed error pages
-
----

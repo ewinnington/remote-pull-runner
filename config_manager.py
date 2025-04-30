@@ -7,6 +7,7 @@ import json
 import os
 import uuid
 import re
+import secrets_manager
 
 
 def normalize_repo_url(repo):
@@ -154,10 +155,11 @@ def add_secret(args):
     cfg = load_config()
     for c in cfg.get('commands', []):
         if c['id'] == args.id:
+            secret_id = secrets_manager.store_secret(args.key, args.value)
             sec = c.setdefault('secrets', [])
-            sec.append({'key': args.key, 'value': args.value})
+            sec.append({'key': args.key, 'id': secret_id})
             save_config(cfg)
-            print(f"Added secret {args.key} to command {args.id}")
+            print(f"Added secret {args.key} (id={secret_id}) to command {args.id}")
             return
     print(f"No command with id {args.id} found.")
 
@@ -171,7 +173,9 @@ def list_secrets(args):
                 print("No secrets set for this command.")
                 return
             for s in secrets:
-                print(f"{s['key']} = {s['value']}")
+                val = secrets_manager.get_secret(s['id'])
+                masked = secrets_manager.mask_secret(val)
+                print(f"{s['key']} = {masked} (id={s['id']})")
             return
     print(f"No command with id {args.id} found.")
 
@@ -181,9 +185,16 @@ def remove_secret(args):
     for c in cfg.get('commands', []):
         if c['id'] == args.id:
             secrets = c.get('secrets', [])
-            filtered = [s for s in secrets if s['key'] != args.key]
-            if len(filtered) < len(secrets):
-                c['secrets'] = filtered
+            new_list = []
+            removed = False
+            for s in secrets:
+                if s['key'] == args.key:
+                    secrets_manager.delete_secret(s['id'])
+                    removed = True
+                else:
+                    new_list.append(s)
+            if removed:
+                c['secrets'] = new_list
                 save_config(cfg)
                 print(f"Removed secret {args.key} from command {args.id}")
             else:

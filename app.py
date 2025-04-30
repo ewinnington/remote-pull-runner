@@ -3,9 +3,11 @@ from flask import Flask, request, jsonify, render_template, send_file, make_resp
 from apscheduler.schedulers.background import BackgroundScheduler
 import os, json, uuid
 import runner
+import secrets_manager
 from datetime import datetime
 import config_manager
-import netifaces, socket
+import netifaces  # type: ignore
+import socket
 
 CONFIG_FILE = 'config.json'
 LOG_DIR = 'logs'
@@ -26,11 +28,9 @@ def save_config(cfg):
     with open(CONFIG_FILE, 'w') as f:
         json.dump(cfg, f, indent=2)
 
-cfg = load_config()
-if 'token' not in cfg:
-    cfg['token'] = uuid.uuid4().hex
-    save_config(cfg)
-TOKEN = cfg['token']
+# Load or generate API token and encryption key
+keys = secrets_manager.load_keys()
+TOKEN = keys['api_key']
 
 # Auth decorator
 def require_token(fn):
@@ -197,7 +197,15 @@ def get_command_secrets(cmd_id):
     cmd = next((c for c in cfg.get('commands', []) if c['id'] == cmd_id), None)
     if not cmd:
         return jsonify({'error':'Command not found'}), 404
-    return jsonify(cmd.get('secrets', []))
+    masked_list = []
+    for s in cmd.get('secrets', []):
+        try:
+            full = secrets_manager.get_secret(s['id'])
+            masked = secrets_manager.mask_secret(full)
+        except Exception:
+            masked = None
+        masked_list.append({'key': s['key'], 'id': s['id'], 'value': masked})
+    return jsonify(masked_list)
 
 @app.route('/api/commands/<cmd_id>/secrets', methods=['POST'])
 @require_token
@@ -210,22 +218,30 @@ def add_command_secret(cmd_id):
     cfg = load_config()
     for c in cfg.get('commands', []):
         if c['id'] == cmd_id:
+            secret_id = secrets_manager.store_secret(key, value)
             sec = c.setdefault('secrets', [])
-            sec.append({'key': key, 'value': value})
+            sec.append({'key': key, 'id': secret_id})
             save_config(cfg)
-            return jsonify({'key':key,'value':value}), 201
+            masked = secrets_manager.mask_secret(value)
+            return jsonify({'key': key, 'id': secret_id, 'value': masked}), 201
     return jsonify({'error':'Command not found'}), 404
 
-@app.route('/api/commands/<cmd_id>/secrets/<key>', methods=['DELETE'])
+@app.route('/api/commands/<cmd_id>/secrets/<secret_id>', methods=['DELETE'])
 @require_token
-def delete_command_secret(cmd_id, key):
+def delete_command_secret(cmd_id, secret_id):
     cfg = load_config()
     for c in cfg.get('commands', []):
         if c['id'] == cmd_id:
-            secrets = c.get('secrets', [])
-            filtered = [s for s in secrets if s['key'] != key]
-            if len(filtered) < len(secrets):
-                c['secrets'] = filtered
+            new_list = []
+            removed = False
+            for s in c.get('secrets', []):
+                if s['id'] == secret_id:
+                    secrets_manager.delete_secret(secret_id)
+                    removed = True
+                else:
+                    new_list.append(s)
+            if removed:
+                c['secrets'] = new_list
                 save_config(cfg)
                 return jsonify({'status':'ok'})
             return jsonify({'error':'Secret not found'}), 404
