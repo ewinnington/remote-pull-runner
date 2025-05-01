@@ -224,3 +224,65 @@
 - Implement token-authenticated clone URL in `runner.run_command`.
 - Verify API authentication in `runner.check_repos`.
 - Add documentation note about private repo support.
+
+---
+
+## Feature: Add Support for Command Secrets
+
+**Date:** 2025-04-22
+
+- Extend command configuration in `config_manager.py` to support secrets (key-value pairs).
+- Update JSON schema for commands in `config.json` to include a `secrets` array of objects with `key` and `value`.
+- Add CLI commands in `config_manager.py` for `add-secret`, `remove-secret`, `list-secrets` per command.
+- Extend API endpoints in `app.py` to manage secrets for commands.
+- Update `templates/commands.html` and `static/main.js` to allow adding, editing, and removing secrets in the UI.
+- Modify `runner.run_command` to inject these secrets as environment variables in the SSH execution.
+- Write unit tests to cover secrets management and environment injection.
+
+---
+
+## Feature: Command Secrets API & UI (Completed)
+
+**Date:** 2025-04-22
+
+- Added Flask API endpoints for listing, adding, and deleting secrets on `/api/commands/<cmd_id>/secrets`
+- Updated `static/main.js` and `commands.html` to provide a Secrets button for managing secrets via prompts
+- Runner now injects secrets as environment variables during SSH command execution
+
+*Next:*
+- Write unit tests for secrets management (CLI, API, runner)
+- Improve UI: use a modal dialog or dedicated form for secrets management instead of prompt/alert
+- Add documentation section in README.md for using command secrets
+- Ensure environment variable escaping and security considerations
+
+---
+
+## Secrets Encryption & Management (Completed)
+**Date:** 2025-04-30
+
+- Generated strong `encryption_key` and `api_key` on first run; stored in `keys.json` with `700` permissions.
+- Moved all sensitive values out of `config.json`; now stored in encrypted `secrets.json` with per-secret salt and `encrypted_data`.
+- Implemented `secrets_manager.py` for key generation, secret storage with PBKDF2+Fernet, masking, and secure deletion.
+- Updated CLI (`config_manager.py`) to call `secrets_manager.store_secret()`, list secrets masked, and delete encrypted secrets.
+- Updated Flask API (`app.py`) to manage secrets by ID, return masked values (`********xyz`), and restrict full decryption to internal runner.
+- Modified `runner.py` to decrypt secrets internally and inject into remote SSH environment.
+- Updated UI (`static/main.js`) to display masked secrets, use secret IDs for add/delete operations, and refresh commands view.
+- Added `cryptography` dependency to `requirements.txt`.
+
+*Next:* Write unit tests for secrets management and improve UI with a dedicated modal dialog for secret operations.
+
+---
+
+## Security Hardening (Completed)
+
+**Date:** 2025-04-30
+
+- Moved repository access tokens from config.json into encrypted secrets via `secrets_manager`.
+- Removed plain `token` field from repo entries in API and CLI; now stored and managed as secrets.
+- Integrated CSRF protection for all state-changing Flask endpoints using Flask-WTF.
+- Hardened `auth_token` cookie with `HttpOnly`, `Secure`, and `SameSite='Lax'` attributes.
+- Added basic input sanitization in `config_manager` and `static/main.js` to deny any `<script>` tags (XSS protection).
+
+*Next:*
+- Write unit tests for CSRF protection and XSS sanitization logic.
+- Improve UI for secret management (modal dialogs rather than prompts).

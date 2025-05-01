@@ -1,12 +1,10 @@
 #!/usr/bin/env python3
-"""
-Manage configuration for remote-pull-runner.
-"""
 import argparse
 import json
 import os
 import uuid
 import re
+import secrets_manager
 
 
 def normalize_repo_url(repo):
@@ -29,7 +27,18 @@ def save_config(cfg):
         json.dump(cfg, f, indent=2)
 
 
+def sanitize_input(val):
+    if '<script>' in val.lower():
+        print("Invalid input: script tags are not allowed")
+        exit(1)
+
+
 def add_repo(args):
+    sanitize_input(args.repo)
+    if args.branch:
+        sanitize_input(args.branch)
+    if args.token:
+        sanitize_input(args.token)
     cfg = load_config()
     repo_name = normalize_repo_url(args.repo)
     for r in cfg['repos']:
@@ -38,12 +47,15 @@ def add_repo(args):
             return
     entry = {
         'name': repo_name,
-        'token': args.token or '',
         'branch': args.branch or 'main',
         'active': True,
         'last_check': '1970-01-01T00:00:00',
-        'last_commit': ''
+        'last_commit': '',
+        'secrets': []
     }
+    if args.token:
+        secret_id = secrets_manager.store_secret(f"{repo_name}_token", args.token)
+        entry['secrets'].append({'key': 'token', 'id': secret_id})
     cfg['repos'].append(entry)
     save_config(cfg)
     print(f"Enrolled repository {repo_name}")
@@ -118,7 +130,8 @@ def add_command(args):
         'server': args.server,
         'command': args.command,
         'active': True,
-        'last_run': '1970-01-01T00:00:00'
+        'last_run': '1970-01-01T00:00:00',
+        'secrets': []  # new field for command secrets
     }
     cfg.setdefault('commands', [])
     cfg['commands'] = [c for c in cfg['commands'] if c['id'] != cmd_id]
@@ -147,6 +160,58 @@ def remove_command(args):
         print(f"Removed command {args.id}")
     else:
         print(f"No command with id {args.id} found.")
+
+
+def add_secret(args):
+    cfg = load_config()
+    for c in cfg.get('commands', []):
+        if c['id'] == args.id:
+            secret_id = secrets_manager.store_secret(args.key, args.value)
+            sec = c.setdefault('secrets', [])
+            sec.append({'key': args.key, 'id': secret_id})
+            save_config(cfg)
+            print(f"Added secret {args.key} (id={secret_id}) to command {args.id}")
+            return
+    print(f"No command with id {args.id} found.")
+
+
+def list_secrets(args):
+    cfg = load_config()
+    for c in cfg.get('commands', []):
+        if c['id'] == args.id:
+            secrets = c.get('secrets', [])
+            if not secrets:
+                print("No secrets set for this command.")
+                return
+            for s in secrets:
+                val = secrets_manager.get_secret(s['id'])
+                masked = secrets_manager.mask_secret(val)
+                print(f"{s['key']} = {masked} (id={s['id']})")
+            return
+    print(f"No command with id {args.id} found.")
+
+
+def remove_secret(args):
+    cfg = load_config()
+    for c in cfg.get('commands', []):
+        if c['id'] == args.id:
+            secrets = c.get('secrets', [])
+            new_list = []
+            removed = False
+            for s in secrets:
+                if s['key'] == args.key:
+                    secrets_manager.delete_secret(s['id'])
+                    removed = True
+                else:
+                    new_list.append(s)
+            if removed:
+                c['secrets'] = new_list
+                save_config(cfg)
+                print(f"Removed secret {args.key} from command {args.id}")
+            else:
+                print(f"No secret with key {args.key} found for command {args.id}")
+            return
+    print(f"No command with id {args.id} found.")
 
 
 def main():
@@ -191,6 +256,21 @@ def main():
     parser_cmd_remove = subs.add_parser('remove-command', help='Remove enrolled command')
     parser_cmd_remove.add_argument('--id', required=True, help='Command ID to remove')
     parser_cmd_remove.set_defaults(func=remove_command)
+
+    parser_sec_add = subs.add_parser('add-secret', help='Add a secret to a command')
+    parser_sec_add.add_argument('--id', required=True, help='Command ID')
+    parser_sec_add.add_argument('--key', required=True, help='Secret key name')
+    parser_sec_add.add_argument('--value', required=True, help='Secret value')
+    parser_sec_add.set_defaults(func=add_secret)
+
+    parser_sec_list = subs.add_parser('list-secrets', help='List secrets for a command')
+    parser_sec_list.add_argument('--id', required=True, help='Command ID')
+    parser_sec_list.set_defaults(func=list_secrets)
+
+    parser_sec_remove = subs.add_parser('remove-secret', help='Remove a secret from a command')
+    parser_sec_remove.add_argument('--id', required=True, help='Command ID')
+    parser_sec_remove.add_argument('--key', required=True, help='Secret key name')
+    parser_sec_remove.set_defaults(func=remove_secret)
 
     args = parser.parse_args()
     if not args.command:

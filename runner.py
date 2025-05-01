@@ -3,6 +3,7 @@ import os, shlex, base64, logging
 import json
 import logging
 import paramiko
+import secrets_manager
 import time
 from datetime import datetime
 from logging.handlers import TimedRotatingFileHandler
@@ -201,9 +202,22 @@ def run_command(cmd_id: str):
             ssh.close()
             return {'error': 'setup_failed', 'details': err}
 
+        # Gather secrets for injection (decrypt via secrets_manager)
+        env = {}
+        for s in cmd_entry.get('secrets', []):
+            try:
+                val = secrets_manager.get_secret(s['id'])
+                env[s['key']] = val
+            except KeyError:
+                logger.warning(f"[COMMAND {cmd_id}] secret {s.get('id')} not found")
+
         # ---------- user command ----------
         user_cmd = f"cd {remote_path} && {cmd_entry['command']}"
-        stdin, stdout, stderr = ssh.exec_command(user_cmd)
+        # Execute the command with secrets in the environment if any
+        if env:
+            stdin, stdout, stderr = ssh.exec_command(user_cmd, environment=env)
+        else:
+            stdin, stdout, stderr = ssh.exec_command(user_cmd)
         status = stdout.channel.recv_exit_status()
         out    = stdout.read().decode().strip()
         err    = stderr.read().decode().strip()
