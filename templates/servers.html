@@ -11,6 +11,7 @@
 </table>
 <h3>Add Server</h3>
 <form id="add-server-form" class="row g-3">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <div class="col-md-4">
     <label class="form-label">Host</label>
     <input type="text" name="host" class="form-control" required>
