@@ -9,6 +9,9 @@ from datetime import datetime
 import config_manager
 import netifaces  # type: ignore
 import socket
+import logging
+from functools import wraps
+from flask_wtf.csrf import CSRFError
 
 CONFIG_FILE = 'config.json'
 LOG_DIR = 'logs'
@@ -18,6 +21,27 @@ CONN_LOG = os.path.join(LOG_DIR, 'connectivity.log')
 app = Flask(__name__)
 app.secret_key = uuid.uuid4().hex
 csrf = CSRFProtect(app)
+
+# Verbose logging
+logging.basicConfig(level=logging.DEBUG,
+                    format='[%(asctime)s] %(levelname)s in %(module)s: %(message)s')
+
+def _mask(val: str | None):
+    if not val or len(val) <= 8:
+        return val
+    return f"{val[:4]}…{val[-4:]}"
+
+@app.before_request
+def _log_request():
+    hdr = {k: (_mask(v) if 'token' in k.lower() else v)
+           for k, v in request.headers.items()}
+    logging.debug(f"REQUEST {request.remote_addr} {request.method} {request.path} "
+                  f"headers={hdr} cookies={{'auth_token': {_mask(request.cookies.get('auth_token'))}}}")
+
+@app.errorhandler(CSRFError)
+def _handle_csrf(e):
+    logging.warning(f"CSRF failure on {request.path}: {e.description}")
+    return jsonify({'error': 'CSRF token missing or invalid'}), 400
 
 # Load or initialize config and token
 def load_config():
@@ -36,12 +60,17 @@ TOKEN = keys['api_key']
 
 # Auth decorator
 def require_token(fn):
+    @wraps(fn)
     def wrapper(*args, **kwargs):
-        auth = request.headers.get('X-Auth-Token') or request.cookies.get('auth_token')
+        auth_header = request.headers.get('X-Auth-Token')
+        auth_cookie = request.cookies.get('auth_token')
+        auth = auth_header or auth_cookie
+        logging.debug(f"AUTH CHECK {request.path} "
+                      f"header={_mask(auth_header)} cookie={_mask(auth_cookie)}")
         if auth != TOKEN:
-            return jsonify({'error':'Unauthorized'}), 401
+            logging.warning(f"401 Unauthorized on {request.path} with token {_mask(auth)}")
+            return jsonify({'error': 'Unauthorized'}), 401
         return fn(*args, **kwargs)
-    wrapper.__name__ = fn.__name__
     return wrapper
 
 @app.context_processor
@@ -51,6 +80,19 @@ def inject_auth():
 
 def normalize_repo(name):
     return config_manager.normalize_repo_url(name)
+
+# Helper for consistent cookie options
+def _cookie_opts(**extra):
+    """
+    Return common kwargs for set_cookie / delete_cookie.
+    The cookie is only flagged Secure when the current request itself is secure.
+    """
+    return {
+        'httponly': True,
+        'secure': request.is_secure,
+        'samesite': 'Lax',
+        **extra
+    }
 
 # Serve index page
 @app.route('/')
@@ -64,7 +106,7 @@ def login():
         token_in = request.form.get('token')
         if token_in == TOKEN:
             resp = make_response(redirect('/repos/view'))
-            resp.set_cookie('auth_token', token_in, httponly=True, secure=True, samesite='Lax')
+            resp.set_cookie('auth_token', token_in, **_cookie_opts())
             return resp
         else:
             flash('Invalid token', 'danger')
@@ -73,7 +115,7 @@ def login():
 @app.route('/logout')
 def logout():
     resp = make_response(redirect('/login'))
-    resp.set_cookie('auth_token', '', expires=0, httponly=True, secure=True, samesite='Lax')
+    resp.set_cookie('auth_token', '', expires=0, **_cookie_opts())
     return resp
 
 @app.route('/repos/view')
@@ -370,5 +412,5 @@ sched.start()
 if __name__ == '__main__':
     #ts_ip = get_tailscale_ip('Unknown adapter Tailscale')  # or the exact adapter name from ipconfig
     #app.run(host=ts_ip, port=5000)
-    app.run(host=get_ip_on_ts_net_domain(), port=5000)
+    app.run(host='100.97.200.75', port=5000)
     #app.run(host='0.0.0.0', port=5000)

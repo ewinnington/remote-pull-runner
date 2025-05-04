@@ -12,22 +12,49 @@ document.addEventListener('DOMContentLoaded', async () => {
   async function request(url, opts = {}) {
     // Attach CSRF token for state-changing requests
     const method = opts.method ? opts.method.toUpperCase() : 'GET';
+    
+    opts.credentials = 'same-origin';
     if (method !== 'GET' && method !== 'HEAD') {
       const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
       opts.headers = {
         ...opts.headers,
         'X-CSRFToken': csrfToken
       };
+      // NEW: log CSRF token
+      console.debug('[request] CSRF token:', csrfToken);
     }
+
+    // NEW: merge default headers + caller‑supplied ones for logging
+    const mergedHeaders = { ...(opts.headers || {}), ...(headers || {}) };
+
+    // NEW: mask token values before printing
+    const mask = v => (typeof v === 'string' && v.length > 8)
+      ? `${v.slice(0,4)}…${v.slice(-4)}`
+      : v;
+
+    console.debug(`[request] ${method} ${url}`, {
+      headers: Object.fromEntries(
+        Object.entries(mergedHeaders).map(([k,v]) => [k, mask(v)])
+      ),
+      body: opts.body
+    });
+
     try {
-      const res = await fetch(url, opts);
-      const data = res.headers.get('Content-Type')?.includes('application/json')
+      const res = await fetch(url, { ...opts, headers: mergedHeaders });
+      const contentType = res.headers.get('Content-Type') || '';
+      const data = contentType.includes('application/json')
         ? await res.json()
         : await res.text();
+
+      // NEW: log response status and (truncated) data
+      console.debug('[response]', { url, status: res.status, data });
+
       if (!res.ok) throw new Error(data.error || data);
       return data;
     } catch (e) {
       alert(e.message);
+      // NEW: log error object
+      console.error('[request error]', e);
       throw e;
     }
   }

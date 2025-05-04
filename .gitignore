@@ -5,3 +5,5 @@ venv/
 .venv/
 logs/
 __pycache__/
+keys.json
+secrets.json

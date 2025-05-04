@@ -45,6 +45,20 @@ def save_config(cfg):
         json.dump(cfg, f, indent=2)
 
 
+def _repo_token(repo_entry):
+    """
+    Return decrypted GitHub PAT for a repo entry (or None).
+    Tokens are stored in repo_entry['secrets'] with key=='token'.
+    """
+    for s in repo_entry.get('secrets', []):
+        if s.get('key') == 'token':
+            try:
+                return secrets_manager.get_secret(s['id'])
+            except Exception as exc:
+                logger.warning(f"Failed to decrypt repo token {s.get('id')}: {exc}")
+    return None
+
+
 def check_repos():
     cfg = load_config()
     repos = cfg.get('repos', [])
@@ -53,11 +67,16 @@ def check_repos():
         if not repo_entry.get('active', False):
             continue
         repo_name = repo_entry['name']
-        token = repo_entry.get('token') or None
+        token = _repo_token(repo_entry)
         branch = repo_entry.get('branch', 'main')
         try:
             gh_instance = Github(token) if token else Github()
+            logger.info(
+                f"Trying {repo_name}: token={'present' if token else 'absent'}")
             api_repo = gh_instance.get_repo(repo_name)
+            logger.info(
+                f"{repo_name}: default_branch={api_repo.default_branch}, "
+                f"using_branch={branch}, token={'present' if token else 'absent'}")
             latest = api_repo.get_commits(sha=branch)[0]
             latest_sha = latest.sha
             last_stored = repo_entry.get('last_commit')
@@ -145,7 +164,7 @@ def run_command(cmd_id: str):
 
     repo_name  = cmd_entry['repo']
     repo_entry = next((r for r in cfg.get('repos', []) if r['name'] == repo_name), {})
-    token      = repo_entry.get('token') or None
+    token      = _repo_token(repo_entry)
     branch     = repo_entry.get('branch', 'main')
 
     gh         = Github(token) if token else Github()
