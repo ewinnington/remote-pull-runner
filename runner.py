@@ -103,10 +103,7 @@ def check_servers():
     servers = cfg.get('servers', [])
     now_iso = datetime.utcnow().isoformat()
     for srv in servers:
-        # Only check if active or in retry state
-        status = srv.get('active')
-        if status == False:
-            continue
+        # Check all servers to allow recovery from unreachable state
         # Mark as retry when starting attempts
         srv['active'] = 'retry'
         host = srv['host']
